@@ -16,11 +16,14 @@ def add_task():
     #Extract Basic Fields
     task = {
         "id": str(uuid.uuid4()),  # Generate a unique ID for the task
-        "title:": data.get("title"),
+        "title": data.get("title"),
         "duration": data.get("duration"),
         "priority": data.get("priority", "medium"),
         "fixed": data.get("fixed", False),
     }
+
+    if "start_time" in data:
+        task["start_time"] = data["start_time"]
 
     tasks.append(task)
     print(f"Added task:{task}")
@@ -32,20 +35,19 @@ def get_tasks():
 
 from datetime import datetime, timedelta
 
-@app.route("/schedule",methods=["POST"])
+@app.route("/schedule", methods=["POST"])
 def schedule_tasks():
     current_time = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
-
     scheduled = []
     blocked_times = []
+
+    # Schedule fixed tasks first
     for task in tasks:
         if task.get("fixed"):
             if "start_time" not in task:
                 task_title = task.get("title", "<unnamed task>")
-                if "start_time" not in task:
-                    return jsonify({"error": f"Fixed task '{task_title}' is missing a start_time."}), 400
+                return jsonify({"error": f"Fixed task '{task_title}' is missing a start_time."}), 400
 
-            
             start = datetime.strptime(task["start_time"], "%H:%M")
             end = start + timedelta(minutes=task["duration"])
             blocked_times.append((start, end))
@@ -54,37 +56,41 @@ def schedule_tasks():
                 "start_time": task["start_time"],
                 "end_time": end.strftime("%H:%M")
             })
+
+    # Now schedule flexible tasks
     for task in tasks:
         if task.get("fixed"):
             continue
 
-        #Assign Start and end times
-        duration = task.get("duration", 60) # Default to 60 minutes if not specified
+        duration = task.get("duration", 60)
+
         while True:
-            overlap = False
+            proposed_start = current_time
+            proposed_end = proposed_start + timedelta(minutes=duration)
+
+            # Check for overlap
+            conflict = False
             for block_start, block_end in blocked_times:
-                proposed_end = current_time + timedelta(minutes=duration)
-                if current_time < block_end and proposed_end > block_start:
-                    overlap = True
+                if proposed_start < block_end and proposed_end > block_start:
+                    # Move current time to the end of this block and re-check
                     current_time = block_end
+                    conflict = True
                     break
-            if not overlap:
+
+            if not conflict:
                 break
-   
-        end_time = current_time + timedelta(minutes=duration)
-        blocked_times.append((current_time, end_time))
 
-
-        scheduled_task = {
+        # No overlap found — schedule it
+        blocked_times.append((current_time, current_time + timedelta(minutes=duration)))
+        scheduled.append({
             **task,
-            "start_time": start_time.strftime("%H:%M"),
-            "end_time": end_time.strftime("%H:%M")
+            "start_time": current_time.strftime("%H:%M"),
+            "end_time": (current_time + timedelta(minutes=duration)).strftime("%H:%M")
+        })
+        current_time += timedelta(minutes=duration)
 
-        }
-        scheduled.append(scheduled_task)
+    return jsonify({"scheduled": scheduled}), 200
 
-        current_time = end_time
-    return jsonify({"scheduled" : scheduled}), 200
 
 @app.route("/reset-tasks", methods=["POST"])
 def reset_tasks():
