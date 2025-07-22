@@ -41,9 +41,11 @@ def schedule_tasks():
     payload   = request.get_json() or {}
     scheduler = Scheduler()
 
+    # Re-add all stored tasks
     for task in tasks:
         scheduler.add_task(task)
 
+    # If the client provided a goal, inject hybrid blocks
     goal = payload.get("goal")
     if goal:
         scheduler.add_goal_hybrid(
@@ -51,13 +53,15 @@ def schedule_tasks():
             total_minutes  = goal["total_minutes"],
             max_block_size = goal["max_block_size"],
             priority       = goal.get("priority", "medium")
-        )        
+        )
 
+    # Run and return your schedule
     try:
         result = scheduler.schedule()
         return jsonify({"scheduled": result}), 200
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+
 
 
 
