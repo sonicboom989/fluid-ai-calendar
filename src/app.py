@@ -63,6 +63,42 @@ def schedule_tasks():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/ai-schedule", methods=["POST"])
+def ai_schedule():
+    payload   = request.get_json() or {}
+    scheduler = Scheduler()
+
+    #Re-add all stored tasks so we keep pre-existing items
+    for t in tasks:
+        scheduler.add_task(t)
+
+    # Apply any “actions” the client sent
+    #    Each action is a dict with a "type" and its parameters.
+    for action in payload.get("actions", []):
+        typ = action.get("type")
+        if typ == "add_task":
+            # expects: { "type":"add_task", "task": { … } }
+            scheduler.add_task(action["task"])
+        elif typ == "add_goal_hybrid":
+            # expects keys: title, total_minutes, max_block_size, [priority]
+            scheduler.add_goal_hybrid(
+                title          = action["title"],
+                total_minutes  = action["total_minutes"],
+                max_block_size = action["max_block_size"],
+                priority       = action.get("priority", "medium")
+            )
+        else:
+            return jsonify({
+              "error": f"Unknown action type: {typ}"
+            }), 400
+
+    # 3 Run the scheduler and return the result
+    try:
+        result = scheduler.schedule()
+        return jsonify({"scheduled": result}), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
 
 
 @app.route("/reset-tasks", methods=["POST"])
