@@ -118,32 +118,41 @@ def natural_schedule():
         return jsonify({"error": "Missing 'prompt' in request body."}), 400
 
     # 1️⃣ Build the messages for the LLM
-    system_msg = (
-        """
+    system_msg = """
         You are an AI calendar assistant.  You must parse the user's instruction and
-        output **only** a JSON object with an "actions" array.  There are two action
+        output **only** a JSON object with an "actions" array.  There are three action
         types:
 
         1) add_task  
-        - Always include:
-            • "title": string  
-            • "duration": number (minutes)  
-            • "fixed": boolean  
-            • "start_time": "HH:MM" (if fixed==true)  
-        - If the user mentions a time (e.g. "10:30 meeting") you **must**:
-            • set fixed=true  
-            • set start_time to that time  
-            • assume duration=60 unless they specified otherwise.
+        • "title": string  
+        • "duration": number (minutes)  
+        • "fixed": boolean  
+        • "start_time": "HH:MM" (if fixed==true)  
+
+        If the user mentions a specific time (e.g. "10:30 meeting"), you must:
+            – set fixed=true  
+            – set start_time to that time  
+            – assume duration=60 unless otherwise specified  
 
         2) add_goal_hybrid  
-        - Include:
-            • "title": string  
-            • "total_minutes": number  
-            • "max_block_size": number  
-            • "priority": string (optional, default "medium")
+        • "title": string  
+        • "total_minutes": number  
+        • "max_block_size": number  
+        • "priority": string (optional, default "medium")  
+
+        3) add_rest  
+        • Insert a rest block between tasks  
+        • Include:
+            – "duration": number (minutes)  
+            – "title": "Rest"  
+            – "fixed": false  
+
+        Use this action when the user asks for a rest period (e.g. "Add 2 hours of rest between each block").
 
         **Example**  
-        User prompt: "Schedule my morning around a 10:30 meeting and give me 2 hours for my side project."  
+        User prompt:  
+        "Schedule my morning around a 10:30 meeting, give me 2 hours for my side project, and add 2 hours of rest between each block."
+
         Correct JSON response:
         ```json
         {
@@ -158,16 +167,29 @@ def natural_schedule():
             }
             },
             {
-            "type":           "add_goal_hybrid",
-            "title":          "Side project",
-            "total_minutes":  120,
-            "max_block_size": 60
+            "type": "add_rest",
+            "duration": 120,
+            "title":    "Rest",
+            "fixed":    false
+            },
+            {
+            "type": "add_goal_hybrid",
+            "title":           "Side project",
+            "total_minutes":   120,
+            "max_block_size":  60
+            },
+            {
+            "type": "add_rest",
+            "duration": 120,
+            "title":    "Rest",
+            "fixed":    false
             }
         ]
         }
+
         DO not wrap your response in markdown or any extra keys—just emit the raw JSON object.
         """
-    )
+    
     existing = json.dumps(tasks)
     messages = [
     {"role":"system",    "content": system_msg},
@@ -200,7 +222,15 @@ def natural_schedule():
     for a in actions:
         typ = a.get("type")
         if typ == "add_task":
-            scheduler.add_task(a["task"])
+            # support both {"type":"add_task","task": {...}}
+            # and flattened {"type":"add_task", "title":..., "duration":..., ...}
+            if "task" in a:
+                task = a["task"]
+            else:
+                # take all keys except "type" as the task dict
+                task = {k: v for k, v in a.items() if k != "type"}
+            scheduler.add_task(task)
+
         elif typ == "add_goal_hybrid":
             scheduler.add_goal_hybrid(
                 title          = a["title"],
@@ -208,6 +238,15 @@ def natural_schedule():
                 max_block_size = a["max_block_size"],
                 priority       = a.get("priority", "medium")
             )
+
+        elif typ == "add_rest":
+            # a should have "duration" (and optional "title")
+            scheduler.add_task({
+                "title":    a.get("title", "Rest"),
+                "duration": a["duration"],
+                "fixed":    False
+            })
+
         else:
             return jsonify({"error": f"Unknown action type '{typ}'"}), 400
 
