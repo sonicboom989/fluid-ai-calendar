@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import math
 
+
 class Scheduler:
     def __init__(self, base_time=None):
         # Default to today at 9:00 AM
@@ -115,5 +116,9 @@ class Scheduler:
                 "end_time":   proposed_end.strftime("%H:%M")
             })
             current_time = proposed_end
+
+        scheduled.sort(
+            key=lambda t: datetime.strptime(t["start_time"], "%H:%M")
+        )
 
         return scheduled

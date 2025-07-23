@@ -1,6 +1,12 @@
 from flask import Flask, request, jsonify
 import uuid
 from scheduler import Scheduler
+#For AI route
+import os
+import json
+from openai import OpenAI
+
+
 
 app = Flask(__name__)
 
@@ -93,6 +99,119 @@ def ai_schedule():
             }), 400
 
     # 3 Run the scheduler and return the result
+    try:
+        result = scheduler.schedule()
+        return jsonify({"scheduled": result}), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    
+
+
+
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+@app.route("/natural-schedule", methods=["POST"])
+def natural_schedule():
+    data = request.get_json() or {}
+    user_prompt = data.get("prompt", "").strip()
+    if not user_prompt:
+        return jsonify({"error": "Missing 'prompt' in request body."}), 400
+
+    # 1️⃣ Build the messages for the LLM
+    system_msg = (
+        """
+        You are an AI calendar assistant.  You must parse the user's instruction and
+        output **only** a JSON object with an "actions" array.  There are two action
+        types:
+
+        1) add_task  
+        - Always include:
+            • "title": string  
+            • "duration": number (minutes)  
+            • "fixed": boolean  
+            • "start_time": "HH:MM" (if fixed==true)  
+        - If the user mentions a time (e.g. "10:30 meeting") you **must**:
+            • set fixed=true  
+            • set start_time to that time  
+            • assume duration=60 unless they specified otherwise.
+
+        2) add_goal_hybrid  
+        - Include:
+            • "title": string  
+            • "total_minutes": number  
+            • "max_block_size": number  
+            • "priority": string (optional, default "medium")
+
+        **Example**  
+        User prompt: "Schedule my morning around a 10:30 meeting and give me 2 hours for my side project."  
+        Correct JSON response:
+        ```json
+        {
+        "actions": [
+            {
+            "type": "add_task",
+            "task": {
+                "title":      "Meeting",
+                "duration":    60,
+                "fixed":       true,
+                "start_time": "10:30"
+            }
+            },
+            {
+            "type":           "add_goal_hybrid",
+            "title":          "Side project",
+            "total_minutes":  120,
+            "max_block_size": 60
+            }
+        ]
+        }
+        DO not wrap your response in markdown or any extra keys—just emit the raw JSON object.
+        """
+    )
+    existing = json.dumps(tasks)
+    messages = [
+    {"role":"system",    "content": system_msg},
+    {"role":"assistant", "content": f"Existing tasks: {existing}"},
+    {"role":"user",      "content": request.json.get("prompt","")}
+    ]
+
+    resp = openai_client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=messages,
+    temperature=0
+    )
+    content = resp.choices[0].message.content
+
+    # 3️⃣ Parse the LLM’s JSON
+    try:
+        payload = json.loads(content)
+        actions = payload.get("actions", [])
+    except json.JSONDecodeError:
+        return jsonify({
+            "error": "Could not parse LLM response as JSON",
+            "raw_response": content
+        }), 500
+
+    # 4️⃣ Replay actions through your Scheduler
+    scheduler = Scheduler()
+    for t in tasks:
+        scheduler.add_task(t)
+
+    for a in actions:
+        typ = a.get("type")
+        if typ == "add_task":
+            scheduler.add_task(a["task"])
+        elif typ == "add_goal_hybrid":
+            scheduler.add_goal_hybrid(
+                title          = a["title"],
+                total_minutes  = a["total_minutes"],
+                max_block_size = a["max_block_size"],
+                priority       = a.get("priority", "medium")
+            )
+        else:
+            return jsonify({"error": f"Unknown action type '{typ}'"}), 400
+
+    # 5️⃣ Generate and return the final, chronological schedule
     try:
         result = scheduler.schedule()
         return jsonify({"scheduled": result}), 200
