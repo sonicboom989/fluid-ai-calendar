@@ -1,6 +1,5 @@
 from datetime import datetime, date, time, timedelta
 from collections import defaultdict
-import math
 
 class Scheduler:
     def __init__(self, base_time=None):
@@ -16,6 +15,20 @@ class Scheduler:
         if "date" not in task:
             task["date"] = self.base_time.date()
         self.tasks.append(task)
+
+    def remove_task(self, task_id):
+        """Remove task by id."""
+        self.tasks = [t for t in self.tasks if t.get("id") != task_id]
+
+    def move_task(self, task_id, earliest_time=None, latest_time=None):
+        """Update a task's window and reschedule later."""
+        for t in self.tasks:
+            if t.get("id") == task_id:
+                if earliest_time is not None:
+                    t["earliest_time"] = earliest_time
+                if latest_time is not None:
+                    t["latest_time"] = latest_time
+                break
 
     def add_goal_hybrid(self, title, total_minutes, max_block_size,
                         rest_between=0, priority="medium"):
@@ -111,53 +124,89 @@ class Scheduler:
                 priority=priority
             )
 
+    def _priority_value(self, p: str) -> int:
+        return {"high": 0, "medium": 1, "low": 2}.get(p, 1)
+
+    def _find_gap(self, dur: int, earliest: datetime, latest: datetime):
+        """Find earliest available start between earliest and latest."""
+        candidate = earliest
+        for st, en, _ in sorted(self.blocked_times, key=lambda x: x[0]):
+            if candidate + timedelta(minutes=dur) <= st:
+                if candidate + timedelta(minutes=dur) <= latest:
+                    return candidate
+            candidate = max(candidate, en)
+            if candidate > latest:
+                break
+        if candidate + timedelta(minutes=dur) <= latest:
+            return candidate
+        return None
+
     def _schedule_day(self, tasks_for_day):
-        """
-        Schedule one day's tasks (fixed + flexible) returning a list of
-        dicts with start_time/end_time on that date.
-        """
+        """Schedule tasks for a single day with windows and sliding."""
         scheduled = []
         self.blocked_times = []
-        current_time = self.base_time
 
-        # fixed first
+        def add_block(task, start):
+            dur = task.get("duration", 60)
+            end = start + timedelta(minutes=dur)
+            record = {**task, "start_time": start.strftime("%H:%M"),
+                      "end_time": end.strftime("%H:%M")}
+            self.blocked_times.append((start, end, record))
+            scheduled.append(record)
+
+        # fixed tasks
         for t in tasks_for_day:
             if t.get("fixed"):
                 st = datetime.strptime(t["start_time"], "%H:%M")
-                st = current_time.replace(hour=st.hour, minute=st.minute)
-                en = st + timedelta(minutes=t["duration"])
-                self.blocked_times.append((st, en))
-                scheduled.append({
-                    **t,
-                    "start_time": st.strftime("%H:%M"),
-                    "end_time":   en.strftime("%H:%M")
-                })
+                st = self.base_time.replace(hour=st.hour, minute=st.minute)
+                add_block(t, st)
 
-        # flexible next
-        for t in tasks_for_day:
-            if t.get("fixed"):
-                continue
-            dur = t.get("duration", 60)
-            while True:
-                pst = current_time
-                pen = pst + timedelta(minutes=dur)
-                conflict = False
-                for bs, be in self.blocked_times:
-                    if pst < be and pen > bs:
-                        current_time = be
-                        conflict = True
-                        break
-                if not conflict:
-                    break
-            self.blocked_times.append((pst, pen))
-            scheduled.append({
-                **t,
-                "start_time": pst.strftime("%H:%M"),
-                "end_time":   pen.strftime("%H:%M")
-            })
-            current_time = pen
+        # flexible tasks sorted by priority then earliest_time
+        flex = [t for t in tasks_for_day if not t.get("fixed")]
+        flex.sort(key=lambda x: (self._priority_value(x.get("priority", "medium")),
+                                 x.get("earliest_time", "00:00")))
 
-        # sort by time and return
+        def slot_task(task, allow_slide=True):
+            dur = task.get("duration", 60)
+            earliest = datetime.strptime(task.get("earliest_time", self.base_time.strftime("%H:%M")), "%H:%M")
+            earliest = self.base_time.replace(hour=earliest.hour, minute=earliest.minute)
+            latest_s = task.get("latest_time", "23:59")
+            latest = datetime.strptime(latest_s, "%H:%M")
+            latest = self.base_time.replace(hour=latest.hour, minute=latest.minute)
+            latest -= timedelta(minutes=dur)
+            start = self._find_gap(dur, earliest, latest)
+            if start:
+                add_block(task, start)
+                return True
+            if allow_slide:
+                return slide_and_reschedule(task, earliest, latest)
+            return False
+
+        def slide_and_reschedule(task, earliest, latest):
+            dur = task.get("duration", 60)
+            removed = []
+            for bt in sorted(self.blocked_times, key=lambda x: self._priority_value(x[2].get("priority", "medium")), reverse=True):
+                st, en, rec = bt
+                if rec.get("fixed"):
+                    continue
+                if self._priority_value(rec.get("priority", "medium")) <= self._priority_value(task.get("priority", "medium")):
+                    continue
+                self.blocked_times.remove(bt)
+                scheduled.remove(rec)
+                removed.append(rec)
+                start = self._find_gap(dur, earliest, latest)
+                if start:
+                    add_block(task, start)
+                    for r in removed:
+                        slot_task(r, allow_slide=False)
+                    return True
+            for r in removed:
+                slot_task(r, allow_slide=False)
+            return False
+
+        for t in flex:
+            slot_task(t)
+
         scheduled.sort(key=lambda x: datetime.strptime(x["start_time"], "%H:%M"))
         return scheduled
 
