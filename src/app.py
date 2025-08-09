@@ -151,14 +151,18 @@ def ai_schedule():
 
 
 
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 @app.route("/natural-schedule", methods=["POST"])
 def natural_schedule():
     data = request.get_json() or {}
     prompt = data.get("prompt", "").strip()
     if not prompt:
         return jsonify({"error": "Missing 'prompt' in request body."}), 400
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return jsonify({"error": "OpenAI API key not configured."}), 500
+
+    openai_client = OpenAI(api_key=api_key)
 
     # 1️⃣ Build the messages for the LLM (now including add_goal_periodic)
     system_msg = """
