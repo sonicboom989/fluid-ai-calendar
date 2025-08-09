@@ -4,12 +4,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fluid AI Calendar</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body>
-    <div id="calendar"></div>
+<body class="has-background-dark has-text-light">
+    <section class="section">
+        <div class="container">
+            <h1 class="title has-text-white has-text-centered">Fluid AI Calendar</h1>
+            <div class="columns is-variable is-6">
+                <div class="column is-one-third">
+                    <form id="task-form" class="box">
+                        <h2 class="subtitle">Add Task</h2>
+                        <div class="field">
+                            <label class="label">Title</label>
+                            <div class="control">
+                                <input class="input" type="text" id="title" required>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">Duration (minutes)</label>
+                            <div class="control">
+                                <input class="input" type="number" id="duration" min="1" required>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">Priority</label>
+                            <div class="control">
+                                <div class="select is-fullwidth">
+                                    <select id="priority">
+                                        <option value="low">Low</option>
+                                        <option value="medium" selected>Medium</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="checkbox">
+                                <input type="checkbox" id="fixed"> Fixed time
+                            </label>
+                        </div>
+                        <div class="field" id="start-time-field" style="display:none;">
+                            <label class="label">Start Time</label>
+                            <div class="control">
+                                <input class="input" type="time" id="start_time">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <button class="button is-primary is-fullwidth" type="submit">Add Task</button>
+                        </div>
+                    </form>
+                    <button id="schedule-btn" class="button is-link is-fullwidth mt-2">Generate Schedule</button>
+                </div>
+                <div class="column">
+                    <div id="calendar"></div>
+                </div>
+            </div>
+        </div>
+    </section>
     <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html>
