@@ -1,21 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
     var calendarEl = document.getElementById('calendar');
-    var calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'timeGridWeek',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek'
-        },
-        events: fetchEvents,
-        eventDidMount: function(info) {
-            var color = info.event.extendedProps.color || '#3788d8';
-            info.el.style.backgroundColor = hexToRgba(color, 0.2);
-            info.el.style.borderLeft = '4px solid ' + color;
-            info.el.style.color = '#fff';
-        }
-    });
-    calendar.render();
 
     function fetchEvents(fetchInfo, successCallback, failureCallback) {
         fetch('/schedule', {
@@ -44,6 +28,60 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(failureCallback);
     }
+
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'timeGridWeek',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek'
+        },
+        events: fetchEvents,
+        eventDidMount: function(info) {
+            var color = info.event.extendedProps.color || '#3788d8';
+            info.el.style.backgroundColor = hexToRgba(color, 0.2);
+            info.el.style.borderLeft = '4px solid ' + color;
+            info.el.style.color = '#fff';
+        }
+    });
+    calendar.render();
+
+    var taskForm = document.getElementById('task-form');
+    var fixedCheckbox = document.getElementById('fixed');
+    var startTimeField = document.getElementById('start-time-field');
+    var scheduleBtn = document.getElementById('schedule-btn');
+
+    fixedCheckbox.addEventListener('change', function() {
+        startTimeField.style.display = fixedCheckbox.checked ? 'block' : 'none';
+    });
+
+    taskForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var payload = {
+            title: document.getElementById('title').value,
+            duration: parseInt(document.getElementById('duration').value, 10),
+            priority: document.getElementById('priority').value,
+            fixed: fixedCheckbox.checked
+        };
+        if (fixedCheckbox.checked) {
+            payload.start_time = document.getElementById('start_time').value;
+        }
+        fetch('/add-task', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(resp => resp.json())
+        .then(function() {
+            taskForm.reset();
+            startTimeField.style.display = 'none';
+            calendar.refetchEvents();
+        });
+    });
+
+    scheduleBtn.addEventListener('click', function() {
+        calendar.refetchEvents();
+    });
 
     function hexToRgba(hex, alpha) {
         var r = parseInt(hex.slice(1, 3), 16);
