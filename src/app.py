@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import uuid
 from scheduler import Scheduler
 #For AI route
@@ -9,13 +9,13 @@ from datetime import datetime, timedelta, date
 
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 
 tasks = []
 
 @app.route('/')
 def home():
-    return "AI Calendar Backend is running!"
+    return render_template('index.html')
 
 @app.route('/add-task', methods=["POST"])
 def add_task():
@@ -101,6 +101,7 @@ def ai_schedule():
         if typ == "add_task":
             # expects: { "type":"add_task", "task": { … } }
             scheduler.add_task(action["task"])
+            tasks.append(action["task"])
         elif typ == "add_goal_hybrid":
             # expects keys: title, total_minutes, max_block_size, [priority]
             scheduler.add_goal_hybrid(
@@ -121,6 +122,20 @@ def ai_schedule():
                 rest_between   = action.get("rest_between", 0),
                 priority       = action.get("priority", "medium")
             )
+        elif typ == "move_task":
+            scheduler.move_task(action["task_id"],
+                                action.get("earliest_time"),
+                                action.get("latest_time"))
+            for t in tasks:
+                if t.get("id") == action["task_id"]:
+                    if action.get("earliest_time"):
+                        t["earliest_time"] = action["earliest_time"]
+                    if action.get("latest_time"):
+                        t["latest_time"] = action["latest_time"]
+                    break
+        elif typ == "remove_task":
+            scheduler.remove_task(action["task_id"])
+            tasks[:] = [t for t in tasks if t.get("id") != action["task_id"]]
         else:
             return jsonify({
               "error": f"Unknown action type: {typ}"
@@ -164,13 +179,19 @@ and must output ONLY a JSON object with an \"actions\" array. Valid actions:
         \"total_minutes\":…,
         \"max_block_size\":…,
         \"start_date\":\"YYYY-MM-DD\",
-        \"end_date\":\"YYYY-MM-DD\",
-        [\"rest_between\"],
-        [\"priority\"]
+      \"end_date\":\"YYYY-MM-DD\",
+      [\"rest_between\"],
+      [\"priority\"]
       }
 
   • add_rest
     – { \"type\":\"add_rest\", \"duration\":…, \"title\":\"Rest\", \"fixed\":false }
+
+  • move_task
+    – { \"type\":\"move_task\", \"task_id\":…, \"earliest_time\":\"HH:MM\", \"latest_time\":\"HH:MM\" }
+
+  • remove_task
+    – { \"type\":\"remove_task\", \"task_id\":… }
 
 Do NOT wrap in Markdown or include any extra keys—emit exactly:
 
@@ -227,6 +248,7 @@ Should output:
         if typ == "add_task":
             task = a.get("task") or {k: v for k, v in a.items() if k != "type"}
             scheduler.add_task(task)
+            tasks.append(task)
 
         elif typ == "add_goal_hybrid":
             scheduler.add_goal_hybrid(
@@ -251,11 +273,27 @@ Should output:
             )
 
         elif typ == "add_rest":
-            scheduler.add_task({
+            rest_task = {
                 "title":    a.get("title", "Rest"),
                 "duration": a["duration"],
                 "fixed":    False
-            })
+            }
+            scheduler.add_task(rest_task)
+            tasks.append(rest_task)
+
+        elif typ == "move_task":
+            scheduler.move_task(a["task_id"], a.get("earliest_time"), a.get("latest_time"))
+            for t in tasks:
+                if t.get("id") == a["task_id"]:
+                    if a.get("earliest_time"):
+                        t["earliest_time"] = a["earliest_time"]
+                    if a.get("latest_time"):
+                        t["latest_time"] = a["latest_time"]
+                    break
+
+        elif typ == "remove_task":
+            scheduler.remove_task(a["task_id"])
+            tasks[:] = [t for t in tasks if t.get("id") != a["task_id"]]
 
         else:
             return jsonify({"error": f"Unknown action type '{typ}'"}), 400
