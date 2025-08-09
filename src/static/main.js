@@ -1,21 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
     var calendarEl = document.getElementById('calendar');
-    var calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'timeGridWeek',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek'
-        },
-        events: fetchEvents,
-        eventDidMount: function(info) {
-            var color = info.event.extendedProps.color || '#3788d8';
-            info.el.style.backgroundColor = hexToRgba(color, 0.2);
-            info.el.style.borderLeft = '4px solid ' + color;
-            info.el.style.color = '#fff';
-        }
-    });
-    calendar.render();
 
     function fetchEvents(fetchInfo, successCallback, failureCallback) {
         fetch('/schedule', {
@@ -44,6 +28,40 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(failureCallback);
     }
+
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'timeGridWeek',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek'
+        },
+        events: fetchEvents,
+        eventDidMount: function(info) {
+            var color = info.event.extendedProps.color || '#3788d8';
+            info.el.style.backgroundColor = hexToRgba(color, 0.2);
+            info.el.style.borderLeft = '4px solid ' + color;
+            info.el.style.color = '#fff';
+        }
+    });
+    calendar.render();
+
+    var promptForm = document.getElementById('prompt-form');
+    promptForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var text = document.getElementById('prompt').value.trim();
+        if (!text) return;
+        fetch('/natural-schedule', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({prompt: text})
+        })
+        .then(resp => resp.json())
+        .then(function() {
+            promptForm.reset();
+            calendar.refetchEvents();
+        });
+    });
 
     function hexToRgba(hex, alpha) {
         var r = parseInt(hex.slice(1, 3), 16);

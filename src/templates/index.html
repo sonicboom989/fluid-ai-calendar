@@ -4,12 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fluid AI Calendar</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body>
-    <div id="calendar"></div>
+<body class="has-background-dark has-text-light">
+    <section class="section">
+        <div class="container">
+            <h1 class="title has-text-white has-text-centered">Fluid AI Calendar</h1>
+            <div class="columns is-variable is-6">
+                <div class="column is-one-third">
+                    <form id="prompt-form" class="box">
+                        <h2 class="subtitle">Ask the assistant</h2>
+                        <div class="field">
+                            <label class="label">Prompt</label>
+                            <div class="control">
+                                <textarea class="textarea" id="prompt" rows="3" placeholder="e.g., Schedule a 30 min call tomorrow at 2pm" required></textarea>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <button class="button is-primary is-fullwidth" type="submit">Send</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="column">
+                    <div id="calendar"></div>
+                </div>
+            </div>
+        </div>
+    </section>
     <script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
 </html>
